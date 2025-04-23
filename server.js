@@ -57,6 +57,47 @@ app.get("/", (req, res) => {
   );
 });
 
+// Common HTML template function
+const generateHtml = (title, heading, data, showButtons = true) => {
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          pre { background-color: #f4f4f4; padding: 10px; border-radius: 5px; overflow: auto; max-height: 400px; }
+          .button-container { margin-top: 20px; display: flex; gap: 10px; }
+          button { 
+            background-color: #4CAF50; 
+            color: white; 
+            padding: 10px 15px; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer;
+          }
+          button:hover { background-color: #45a049; }
+        </style>
+      </head>
+      <body>
+        <h2>${heading}</h2>
+        ${
+          showButtons
+            ? `
+        <div class="button-container">
+          <button onclick="window.location.href='/refresh'">Refresh Token</button>
+          <button onclick="window.location.href='/userinfo'">User Info</button>
+          <button onclick="window.location.href='/tokeninfo'">Token Info</button>
+        </div>
+        `
+            : ""
+        }
+        <pre>${JSON.stringify(data, null, 2)}</pre>
+      </body>
+    </html>
+  `;
+};
+
 // hit this endpoint to exchange the code for an access token
 app.get("/callback", async (req, res) => {
   const { code, state: callbackState } = qs.parse(req.query);
@@ -85,39 +126,22 @@ app.get("/callback", async (req, res) => {
   tokens.refreshToken = response.refresh_token;
   tokens.idToken = response.id_token;
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>OAuth Response</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          pre { background-color: #f4f4f4; padding: 10px; border-radius: 5px; }
-          button { 
-            background-color: #4CAF50; 
-            color: white; 
-            padding: 10px 15px; 
-            border: none; 
-            border-radius: 4px; 
-            cursor: pointer; 
-            margin-top: 10px;
-          }
-          button:hover { background-color: #45a049; }
-        </style>
-      </head>
-      <body>
-        <h2>OAuth Token Response</h2>
-        <pre>${JSON.stringify(response, null, 2)}</pre>
-        <button onclick="window.location.href='/refresh'">Refresh Token</button>
-      </body>
-    </html>
-  `;
-
-  res.send(html);
+  res.send(generateHtml("OAuth Response", "OAuth Token Response", response));
 });
 
 // hit this endpoint to refresh the access token
 app.get("/refresh", async (_, res) => {
+  if (!tokens.refreshToken) {
+    return res.send(
+      generateHtml(
+        "Error",
+        "Error: No Refresh Token Available",
+        { error: "No refresh token available. Please authorize first." },
+        false
+      )
+    );
+  }
+
   const response = await fetch(`${process.env.FAPI_URL}/oauth/token`, {
     method: "POST",
     headers: {
@@ -137,39 +161,22 @@ app.get("/refresh", async (_, res) => {
   tokens.accessToken = response.access_token;
   tokens.refreshToken = response.refresh_token;
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Token Refreshed</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          pre { background-color: #f4f4f4; padding: 10px; border-radius: 5px; }
-          button { 
-            background-color: #4CAF50; 
-            color: white; 
-            padding: 10px 15px; 
-            border: none; 
-            border-radius: 4px; 
-            cursor: pointer; 
-            margin-top: 10px;
-          }
-          button:hover { background-color: #45a049; }
-        </style>
-      </head>
-      <body>
-        <h2>Token Refreshed</h2>
-        <pre>${JSON.stringify(response, null, 2)}</pre>
-        <button onclick="window.location.href='/refresh'">Refresh Token Again</button>
-      </body>
-    </html>
-  `;
-
-  res.send(html);
+  res.send(generateHtml("Token Refreshed", "Token Refreshed", response));
 });
 
 // get user info given an access token
 app.get("/userinfo", async (_, res) => {
+  if (!tokens.accessToken) {
+    return res.send(
+      generateHtml(
+        "Error",
+        "Error: No Access Token Available",
+        { error: "No access token available. Please authorize first." },
+        false
+      )
+    );
+  }
+
   const response = await fetch(`${process.env.FAPI_URL}/oauth/userinfo`, {
     headers: {
       Authorization: `Bearer ${tokens.accessToken}`,
@@ -178,11 +185,22 @@ app.get("/userinfo", async (_, res) => {
     .then((res) => res.json())
     .catch((error) => error.data);
 
-  res.json(response);
+  res.send(generateHtml("User Info", "User Information", response));
 });
 
 // get refresh token info
 app.get("/tokeninfo", async (_, res) => {
+  if (!tokens.refreshToken || !tokens.accessToken) {
+    return res.send(
+      generateHtml(
+        "Error",
+        "Error: No Tokens Available",
+        { error: "No tokens available. Please authorize first." },
+        false
+      )
+    );
+  }
+
   const response = await fetch(`${process.env.FAPI_URL}/oauth/token_info`, {
     method: "POST",
     headers: {
@@ -196,7 +214,7 @@ app.get("/tokeninfo", async (_, res) => {
     .then((res) => res.json())
     .catch((error) => error.data);
 
-  res.json(response);
+  res.send(generateHtml("Token Info", "Refresh Token Information", response));
 });
 
 // start the server

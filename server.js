@@ -49,12 +49,56 @@ const params = {
 };
 
 console.log("Opening initial authorization url in browser...");
-open(`${process.env.FAPI_URL}/oauth/authorize?${qs.stringify(params)}`);
+open(`http://localhost:${PORT}/`);
 
 app.get("/", (req, res) => {
-  res.redirect(
-    `${process.env.FAPI_URL}/oauth/authorize?${qs.stringify(params)}`
-  );
+  const loginUrl = `${process.env.FAPI_URL}/oauth/authorize?${qs.stringify(
+    params
+  )}`;
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Clerk OAuth 2.0 Demo</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; text-align: center; }
+          .container { max-width: 800px; margin: 0 auto; }
+          h1 { color: #333; }
+          p { color: #666; line-height: 1.6; }
+          .login-button {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 20px;
+          }
+          .login-button:hover { background-color: #45a049; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>Welcome to Clerk as OAuth 2.0 IDP Demo</h1>
+          <p>
+            This application simulates a client that uses Clerk as an OAuth 2.0 Identity Provider.
+            It demonstrates the OAuth 2.0 authorization code flow, token refresh, and accessing user information.
+          </p>
+          <p>
+            OAuth 2.0 State: ${state}
+          </p>
+          <p>
+            FAPI URL: ${process.env.FAPI_URL}
+          </p>
+          <p>
+            OAuth 2.0 Authorization URL: ${loginUrl}
+          </p>
+          <a href="${loginUrl}" class="login-button">Log in with ${process.env.FAPI_URL}</a>
+        </div>
+      </body>
+    </html>
+  `);
 });
 
 // Common HTML template function
@@ -188,7 +232,7 @@ app.get("/userinfo", async (_, res) => {
   res.send(generateHtml("User Info", "User Information", response));
 });
 
-// get refresh token info
+// get token info for both refresh token and access token
 app.get("/tokeninfo", async (_, res) => {
   if (!tokens.refreshToken || !tokens.accessToken) {
     return res.send(
@@ -201,20 +245,46 @@ app.get("/tokeninfo", async (_, res) => {
     );
   }
 
-  const response = await fetch(`${process.env.FAPI_URL}/oauth/token_info`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${tokens.accessToken}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: qs.stringify({
-      token: tokens.refreshToken,
-    }),
-  })
+  // Get refresh token info
+  const refreshTokenInfo = await fetch(
+    `${process.env.FAPI_URL}/oauth/token_info`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${tokens.accessToken}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: qs.stringify({
+        token: tokens.refreshToken,
+      }),
+    }
+  )
     .then((res) => res.json())
     .catch((error) => error.data);
 
-  res.send(generateHtml("Token Info", "Refresh Token Information", response));
+  // Get access token info
+  const accessTokenInfo = await fetch(
+    `${process.env.FAPI_URL}/oauth/token_info`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: qs.stringify({
+        token: tokens.accessToken,
+      }),
+    }
+  )
+    .then((res) => res.json())
+    .catch((error) => error.data);
+
+  // Combine both results
+  const combinedInfo = {
+    refreshToken: refreshTokenInfo,
+    accessToken: accessTokenInfo,
+  };
+
+  res.send(generateHtml("Token Info", "Token Information", combinedInfo));
 });
 
 // start the server

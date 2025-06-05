@@ -117,6 +117,18 @@ app.get("/", (req, res) => {
             margin-top: 20px;
           }
           .login-button:hover { background-color: #45a049; }
+          .client-credentials-button {
+            display: inline-block;
+            background-color: #2196F3;
+            color: white;
+            padding: 12px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 20px;
+            margin-left: 10px;
+          }
+          .client-credentials-button:hover { background-color: #1976D2; }
         </style>
       </head>
       <body>
@@ -131,6 +143,7 @@ app.get("/", (req, res) => {
             ${loginUrl}
           </div>
           <a href="${loginUrl}" class="login-button">Log in with ${process.env.FAPI_URL}</a>
+          <a href="/client-credentials" class="client-credentials-button">Get Access Token with Client Credentials</a>
         </div>
       </body>
     </html>
@@ -297,21 +310,17 @@ app.get("/userinfo", async (_, res) => {
 
   res.send(generateHtml("User Info", "User Information", response));
 });
-
 // Introspect a token
 async function introspectToken(token) {
-  const basicAuth = Buffer.from(
-    `${process.env.CLIENT_ID}:${process.env.CLIENT_SECRET}`
-  ).toString("base64");
-
   return await fetch(`${process.env.FAPI_URL}/oauth/token_info`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${basicAuth}`,
     },
     body: qs.stringify({
       token,
+      client_id: process.env.CLIENT_ID,
+      client_secret: process.env.CLIENT_SECRET,
     }),
   })
     .then((res) => res.json())
@@ -425,6 +434,46 @@ app.get("/revoke/refresh", async (_, res) => {
   };
 
   res.send(generateHtml("Token Revoked", "Refresh Token Revoked", response));
+});
+
+// Add new endpoint for client credentials flow
+app.get("/client-credentials", async (_, res) => {
+  const response = await fetch(`${process.env.FAPI_URL}/oauth/token`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: qs.stringify({
+      client_id: process.env.CLIENT_ID,
+      client_secret: process.env.CLIENT_SECRET,
+      grant_type: "client_credentials",
+      scope: "email profile",
+    }),
+  });
+
+  console.log("Client credentials response status:", response.status);
+
+  if (response.status !== 200) {
+    const errorData = await response.json();
+    console.log("Client credentials error:", errorData);
+    return res.send(
+      generateHtml("OAuth Error", "Client Credentials Error", errorData, false)
+    );
+  }
+
+  const tokenData = await response.json();
+  console.log("Client credentials success:", tokenData);
+
+  // Store the access token
+  tokens.accessToken = tokenData.access_token;
+
+  res.send(
+    generateHtml(
+      "Client Credentials Response",
+      "Client Credentials Token Response",
+      tokenData
+    )
+  );
 });
 
 // start the server
